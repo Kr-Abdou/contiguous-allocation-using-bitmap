@@ -1,172 +1,207 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <stdbool.h>
+#include <string.h>
 
-typedef struct partition
-{
-    int start_adr;
-    int size;
-    bool free;
-} part;
+#define mem_size 5000
+#define unit_size 50
 
 typedef struct program {
-    char name[20];
-    int size;
-} prg;
+    char name [20];
+    int size ;
+    int time ;
+}prg;
 
-typedef struct NODE
-{
+typedef struct NODE {
     prg data;
     struct NODE *next;
 }node;
 
-typedef struct liste {
+typedef struct Queue {
     node *head;
-    node *fin;
+    node *tail;
 }Queue;
 
-part * create_part (int num_part)
-{
-    part *partitions = (part*) malloc (num_part *sizeof(part));// table of structures
-    int start = 0,i;
-    for (i=0;i<num_part;i++)
-    {
-        printf("Enter the size of partition %d: ",i+1);
-        scanf("%d",&(partitions [i].size));
-        partitions[i].start_adr = start;
-        partitions[i].free = true;
-        start = start + partitions[i].size;
-    }
-    return partitions;
+typedef struct memory {
+    bool free;
+    char prog [20];
+    int start_adr;
+    int length;
+}memory;
+
+typedef struct nodepart {
+    memory partdata;
+    struct nodepart *next;
+}nodepart;
+
+typedef struct Lis {
+    nodepart *head;
+}Lis;
+
+
+int num_units (int size){
+    return (size % unit_size == 0 ) ? (size / unit_size) : (size / unit_size +1 );
 }
 
-void print_part (part *partitions,int num_part)
-{
-    int i;
-    for (i=0;i<num_part;i++)
-    {
-        if (partitions[i].free)
-        {
-            printf("partition %d: starting @: %d kb, size: %d kb, status:free\n",i+1,partitions[i].start_adr,partitions[i].size);
-        }else{
-            printf("partition %d: starting @: %d kb, size: %d kb, status:allocated\n",i+1,partitions[i].start_adr,partitions[i].size);
-        }
+void print_bit_map (Lis *bit_map){
+    printf("BIR MAP :\n");
+    nodepart *current = bit_map->head ;
+    while (current!=NULL){
+        printf(" [%s][%d][%d] ",current->partdata.prog,current->partdata.start_adr,current->partdata.length);
+        current=current->next;
     }
+    printf("\n");
 }
-void addtoQ (Queue *q, prg p)
-{
-    node *n = (node*)malloc(sizeof(node));
+
+void addtoQ (Queue *q,prg p){
+    node *n =(node *) malloc (sizeof (node));
     n->data = p;
     n->next = NULL;
-    if (q->head==NULL)
-    {
+    if (q->head == NULL){
         q->head = n;
     }else{
-        q->fin->next=n;
+        q->tail->next = n;
     }
-    q->fin = n;
+    q->tail = n;
 }
 
-prg deleteQ (Queue *q)
-{
-    node *head = q->head;
+prg deleteQ (Queue *q){
+    node * head = q->head;
     prg p = head->data;
 
     q->head = head->next;
-    if (q->head ==NULL)
-    {
-        q->fin =NULL;
+    if (q->head == NULL){
+            q->tail = NULL;
     }
-    free (head);
+    free(head);
     return p;
 }
 
-void first_fit (part *partitons,int num_part,Queue *wait)
-{
-    node *current = wait->head;
-    while (current !=NULL)
-    {
-        prg curr_prg = current->data;
+void create_list_part (memory part, Lis *q){
+    nodepart *n = (nodepart *) malloc (sizeof(nodepart));
+    n->partdata = part;
+    n->next = NULL;
+    if (q->head == NULL){
+        q->head = n;
+    }else{
+        nodepart  *current = q->head;
+        while (current ->next != NULL){
+            current = current->next;
+        }
+        current->next = n;
+    }
+}
 
-        bool found_part = false ;
-        for (int i=0;i<num_part;i++)
-        {
-            if(partitons[i].free && partitons[i].size >= curr_prg.size)
-            {
-                partitons[i].free = false ;
-                partitons[i].size = partitons[i].size - curr_prg.size;
-                printf("\n program %s loaded into partition %d. remaining free space in the partition  is %d KB \n",curr_prg.name,i+1,partitons[i].size);
-                found_part = true;
-                break;
+void allocate_memory(Lis *bit_map, prg p) {
+    int num_units_req = (p.size + 49) / 50; // calculate number of allocation units required
+    int min_length = num_units_req + 1; // min len required for program & the data
+
+    // best fit algorithm
+    nodepart *best_fit = NULL;
+    int best_fit_length = mem_size + 1;
+    nodepart *curr = bit_map->head;
+    while (curr != NULL) {
+        if (curr->partdata.free && curr->partdata.length >= min_length) {
+            if (curr->partdata.length < best_fit_length) {
+                best_fit = curr;
+                best_fit_length = curr->partdata.length;
             }
         }
-         if (!found_part)
-        {
-           printf("\nError program %s couldnt be loaded in memory\n",curr_prg.name);
+        curr = curr->next;
+    }
+    if (best_fit != NULL) {
+        // change the data of allocated partition
+        best_fit->partdata.free = false;
+        strcpy(best_fit->partdata.prog, p.name);
+        best_fit->partdata.length = num_units_req;
+        // create hole if needed
+        int hole_length = best_fit_length - min_length;
+        if (hole_length > 0) {
+            memory hole = {true, "hole", best_fit->partdata.start_adr + num_units_req, hole_length};
+            create_list_part(hole, bit_map);
         }
+        printf("Program %s allocated from address %d to %d\n", p.name, best_fit->partdata.start_adr, best_fit->partdata.start_adr + num_units_req - 1);
+    }
+    else {
+        printf("Program %s cannot be allocated\n", p.name);
+    }
+}
 
-        current = current->next;
-  }
+
+void deallocate_memory (Lis *bit_map,char *name){
+    //find mem part with program name
+    nodepart *curr = bit_map->head;
+    while (curr!=NULL){
+        if (!curr->partdata.free && strcmp(curr->partdata.prog,name)==0){
+            // change data of deallocated parts
+            curr->partdata.free = true;
+            strcpy(curr->partdata.prog,"hole");
+            // njm3o holes li 7da b3dahom
+            if (curr->next !=NULL && curr->next->partdata.free){
+                curr->partdata.length += curr->next->partdata.length;
+                curr->next = curr->next->next;
+            }
+            if (curr->partdata.start_adr>0){
+                nodepart *prev = bit_map->head;
+                while (prev->next != curr){
+                    prev = prev->next;
+                }
+                if (prev->partdata.free){
+                    prev->partdata.length += curr->partdata.length;
+                    prev->next = curr->next;
+                    free (curr);
+                    curr  = prev ;
+                }
+            }
+            printf("program %s deallocated \n",name);
+            return;
+        }
+        curr = curr->next;
+    }
+    printf("program %s not found\n", name);
 }
 
 
 
 
+int main() {
+    Queue q = {NULL, NULL};
+    Lis bit_map = {NULL};
 
-int main (){
-    int num_part,choice,num_prg;
+    memory m = {true, "hole", 0, mem_size};
+    create_list_part(m, &bit_map);
 
-    printf("enter the number of partitions");
-    scanf("%d",&num_part);
+    while (1) {
+        printf("Enter command (A for allocate, D for deallocate, P for print bit map, Q for quit): ");
+        char cmd;
+        scanf(" %c", &cmd);
 
-    part *partitions = create_part(num_part);
-    printf("\n------ PDT -------\n");
-    printf("\n| Partition Number | Starting Address | Size (in KB)     | Status           |\n");
-    printf("\n|------------------|------------------|------------------|-------------------\n");
-    for (int i=0;i<num_part;i++)
-    {
-        printf("| %-16d | %-16d | %-16d | %-16s |\n", i+1, partitions[i].start_adr, partitions[i].size, partitions[i].free ? "Free" : "Allocated");
+        if (cmd == 'Q') {
+            break;
+        }
+        else if (cmd == 'A') {
+            prg p;
+            printf("Enter program name, size and time: ");
+            scanf("%s %d %d", p.name, &p.size, &p.time);
+            addtoQ(&q, p);
+            printf("Program %s added to queue\n", p.name);
+        }
+        else if (cmd == 'D') {
+            char name[20];
+            printf("Enter program name: ");
+            scanf("%s", name);
+            sdeallocate_memory(&bit_map, name);
+        }
+        else if (cmd == 'P') {
+            print_bit_map(&bit_map);
+        }
+
+        // check queue for programs to allocate
+        while (q.head != NULL) {
+            prg p = deleteQ(&q);
+            allocate_memory(&bit_map, p);
+        }
     }
 
-    Queue waiting;
-    waiting.head = NULL;
-    waiting.fin = NULL;
-
-    printf("\n Enter the number of programs: ");
-    scanf("%d",&num_prg);
-
-    for (int i=0;i<num_prg;i++)
-    {
-        prg p;
-        printf("enter the name and size of program in %d: ",i+1);
-        scanf("%s %d",p.name,&p.size);
-        addtoQ(&waiting,p);
-    }
-    printf("\nEnter the allocation algorithm to use:\n");
-    printf("1. First Fit\n");
-    printf("2. Best Fit\n");
-    printf("3. Worst Fit\n");
-    printf("Enter your choice: ");
-    scanf("%d", &choice);
-
-    switch(choice)
-    {
-        case 1:
-            printf("\nUsing First Fit algorithm:\n");
-            first_fit(partitions, num_part, &waiting);
-            break;
-        case 2:
-            printf("\nUsing Best Fit algorithm:\n");
-            // implement best fit algorithm here
-            break;
-        case 3:
-            printf("\nUsing Worst Fit algorithm:\n");
-            // implement worst fit algorithm here
-            break;
-        default:
-            printf("\nError: Invalid choice.\n");
-            break;
-    }
     return 0;
 }
